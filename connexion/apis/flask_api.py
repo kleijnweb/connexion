@@ -3,6 +3,7 @@ import logging
 import flask
 import six
 import werkzeug.exceptions
+from werkzeug.wsgi import get_input_stream
 
 from connexion.apis import flask_utils
 from connexion.apis.abstract import AbstractAPI
@@ -211,19 +212,28 @@ class FlaskApi(AbstractAPI):
 
         :rtype: ConnexionRequest
         """
+
         flask_request = flask.request
+
+        if flask_request.headers.get('Transfer-Encoding', '') == 'chunked':
+            body = LimitedStream(get_input_stream(flask_request.environ, safe_fallback=False), content_length)
+        else:
+            body = flask_request.get_data()
+
         request = ConnexionRequest(
             flask_request.url,
             flask_request.method,
             headers=flask_request.headers,
-            form=flask_request.form,
             query=flask_request.args,
-            body=flask_request.get_data(),
             json=flask_request.get_json(silent=True),
+            body=body,
+            form=flask_request.form,
             files=flask_request.files,
             path_params=params,
             context=FlaskRequestContextProxy()
         )
+
+        logger.debug('ConnexionRequest.body ()' + request.body.read().decode())
         logger.debug('Getting data and status code',
                      extra={
                          'data': request.body,
